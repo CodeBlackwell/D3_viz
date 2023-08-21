@@ -4,7 +4,16 @@ import App from './App';
 
 const rootContainer = document.getElementById('root');
 if (rootContainer) {
-    createRoot(rootContainer).render(<App />);
+    const root = createRoot(rootContainer);
+    root.render(<App />);
+
+    // Enable Hot Module Replacement
+    if (module.hot) {
+        module.hot.accept('./App', () => {
+            const NextApp = require('./App').default;
+            root.render(<NextApp />);
+        });
+    }
 } else {
     console.error('Root element not found');
 }
