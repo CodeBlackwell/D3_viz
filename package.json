@@ -2,11 +2,25 @@
   "name": "AlgoViz",
   "version": "1.0.0",
   "description": "Catalog and Visualize Algorithms in real time and display their time complexity.",
-  "main": "index.js",
+  "main": "src/index.js",
   "license": "MIT",
   "scripts": {
     "start": "webpack serve",
     "build": "webpack"
+  },
+  "dependencies": {
+    "d3": "^7.8.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.22.10",
+    "@babel/preset-env": "^7.22.10",
+    "@babel/preset-react": "^7.22.5",
+    "babel-loader": "^9.1.3",
+    "html-webpack-plugin": "^5.5.3",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
   }
-
 }
