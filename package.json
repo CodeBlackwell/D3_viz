@@ -1,0 +1,12 @@
+{
+  "name": "AlgoViz",
+  "version": "1.0.0",
+  "description": "Catalog and Visualize Algorithms in real time and display their time complexity.",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "webpack serve",
+    "build": "webpack"
+  }
+
+}
