@@ -39,6 +39,7 @@ const App = () => {
         <div>
             <h1>React D3 Bar Chart</h1>
             <svg ref={ref}></svg>
+            <svg ref={ref}></svg>
         </div>
     );
 };

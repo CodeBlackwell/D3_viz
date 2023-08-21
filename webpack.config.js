@@ -26,6 +26,6 @@ module.exports = {
         }),
     ],
     devServer: {
-        contentBase: './dist',
+        static: './dist', // This replaces 'contentBase' in newer versions
     },
 };
