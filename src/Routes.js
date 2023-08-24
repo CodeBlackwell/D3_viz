@@ -1,14 +1,14 @@
 // src/Routes.js
 import React from 'react';
-import { Route, Switch } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom'; // Use Routes instead of Switch
 import Home from './components/Home/Home';
 import NotFound from './components/NotFound/NotFound';
 
-const Routes = () => (
-    <Switch>
-        <Route exact path="/" component={Home} />
-        <Route component={NotFound} /> {/* Fallback route */}
-    </Switch>
+const AppRoutes = () => (
+    <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="*" element={<NotFound />} /> {/* Fallback route */}
+    </Routes>
 );
 
-export default Routes;
+export default AppRoutes;
