@@ -1,16 +1,23 @@
 // src/components/SearchTrees/BFSTree.js
-import React, { useRef, useEffect } from 'react';
-import * as d3 from 'd3';
+import React, { useState } from 'react';
 import SecureInput from '../Main/SecureInput'; // Adjust the path as needed
 import './BFSTree.scss';
-import NodeTree from "../Visualizations/NodeGraph/NodeGraph";
+import NodeGraph from '../Visualizations/NodeGraph/NodeGraph';
+
 const BFSTree = () => {
+    const [layers, setLayers] = useState(5); // State to hold the number of layers
 
     return (
-        <div className="bfs-tree">
+        <div>
             <h1>BFS (Breadth First Search) Tree</h1>
-            <SecureInput placeholder="Enter user input" />
-            <NodeTree layers={5} />
+            <SecureInput
+                type="number"
+                placeholder="Enter number of layers"
+                onChange={(e) => setLayers(Number(e.target.value))} // Update layers state
+            />
+            <div>
+                <NodeGraph layers={layers} /> {/* Pass layers to NodeGraph */}
+            </div>
             <pre className="code-block">
         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus lacinia odio vitae vestibulum.
       </pre>
