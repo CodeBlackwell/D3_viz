@@ -32,11 +32,13 @@ module.exports = (env, argv) => {
             }),
             isDevelopment && new webpack.HotModuleReplacementPlugin(),
         ].filter(Boolean),
-        // webpack.config.js
         devServer: {
             static: './dist',
             hot: true,
-            historyApiFallback: true,  // Add this line
+            historyApiFallback: true,
+            proxy: {
+                '/api': 'http://localhost:3000'
+            }
         },
         resolve: {
             extensions: ['.js', '.jsx'],
