@@ -13,7 +13,6 @@ const Term = sequelize.define('Term', {
     term_id: {
         type: DataTypes.STRING,
         allowNull: false,
-        primaryKey: true
     }
 });
 
@@ -23,8 +22,8 @@ let currentRowIndex = 0;
 
 function processFile(filePath) {
     return new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-            .pipe(csv.parse({ headers: true, delimiter: '\t' }))
+        fs.createReadStream(filePath, { encoding: 'utf8' })  // Specify UTF-8 encoding here
+            .pipe(csv.parse({ headers: true, delimiter: ',' }))
             .on('data', (row) => {
                 if (row.term_id) {
                     Term.create(row)
@@ -36,6 +35,8 @@ function processFile(filePath) {
                         })
                         .catch(error => {
                             console.error(`Error processing row ${currentRowIndex} from ${filePath}:`, error);
+                            console.log(`Offending element at filepath: ${filePath}, row#: ${currentRowIndex}`);
+                            console.log('Content of the offending row:', row);
                         });
                 }
             })
