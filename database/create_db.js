@@ -20,31 +20,26 @@ const CHUNKS_DIR = path.join(__dirname, 'chunks');
 let currentFileIndex = 0;
 let currentRowIndex = 0;
 
-function processFile(filePath) {
+
+async function processFile(filePath) {
+    const rowsToInsert = [];
     return new Promise((resolve, reject) => {
-        fs.createReadStream(filePath, { encoding: 'utf8' })  // Specify UTF-8 encoding here
+        fs.createReadStream(filePath, { encoding: 'utf8' })
             .pipe(csv.parse({ headers: true, delimiter: ',' }))
             .on('data', (row) => {
                 if (row.term_id) {
-                    Term.create(row)
-                        .then(() => {
-                            currentRowIndex++;
-                            if (currentRowIndex % 100 === 0) {
-                                console.log(`Processed ${currentRowIndex} rows from ${filePath}`);
-                            }
-                        })
-                        .catch(error => {
-                            console.error(`Error processing row ${currentRowIndex} from ${filePath}:`, error);
-                            console.log(`Offending element at filepath: ${filePath}, row#: ${currentRowIndex}`);
-                            console.log('Content of the offending row:', row);
-                        });
+                    rowsToInsert.push(row);
                 }
             })
-            .on('error', (error) => {
-                console.error(`Error parsing CSV from ${filePath}:`, error);
-            })
-            .on('end', () => {
-                resolve();
+            .on('error', reject)
+            .on('end', async () => {
+                try {
+                    await Term.bulkCreate(rowsToInsert);
+                    console.log(`Processed ${rowsToInsert.length} rows from ${filePath}`);
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
             });
     });
 }
@@ -52,14 +47,14 @@ function processFile(filePath) {
 async function main() {
     await sequelize.sync({ force: true });
     const files = fs.readdirSync(CHUNKS_DIR);
-    for (const file of files) {
+    const filePromises = files.map(file => {
         const filePath = path.join(CHUNKS_DIR, file);
-        await processFile(filePath);
-        currentFileIndex++;
-        console.log(`Processed file ${currentFileIndex} of ${files.length}`);
-    }
+        return processFile(filePath);
+    });
+    await Promise.all(filePromises);
     console.log('All files processed.');
     await sequelize.close();
 }
 
 main();
+
