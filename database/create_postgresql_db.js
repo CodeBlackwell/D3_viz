@@ -185,9 +185,11 @@ async function importCSVtoPostgreSQL(directoryPath) {
 
 // Call the functions
 (async () => {
+    const directoryPath = path.join(__dirname, 'chunks');
+
     await client.connect();
     await createDatabaseAndTables();
     await cacheMappings();
-    await importCSVtoPostgreSQL('./chunks');
+    await importCSVtoPostgreSQL(directoryPath);
     await client.end();
 })();
