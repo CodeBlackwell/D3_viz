@@ -87,6 +87,40 @@ async function createDatabaseAndTables() {
     }
 }
 
+let mappings = {
+    reltypes: {},
+    languages: {},
+    group_tags: {},
+    parent_tags: {}
+};
+
+async function cacheMappings() {
+    try {
+        const reltypes = await client.query('SELECT reltype_id, reltype_name FROM reltypes;');
+        reltypes.rows.forEach(row => {
+            mappings.reltypes[row.reltype_name] = row.reltype_id;
+        });
+
+        const languages = await client.query('SELECT lang_id, lang_name FROM languages;');
+        languages.rows.forEach(row => {
+            mappings.languages[row.lang_name] = row.lang_id;
+        });
+
+        const groupTags = await client.query('SELECT group_tag_id, group_tag_name FROM group_tags;');
+        groupTags.rows.forEach(row => {
+            mappings.group_tags[row.group_tag_name] = row.group_tag_id;
+        });
+
+        const parentTags = await client.query('SELECT parent_tag_id, parent_tag_name FROM parent_tags;');
+        parentTags.rows.forEach(row => {
+            mappings.parent_tags[row.parent_tag_name] = row.parent_tag_id;
+        });
+
+    } catch (err) {
+        console.error('Error caching mappings:', err);
+    }
+}
+
 
 const csTerms = new pgp.helpers.ColumnSet(['term_id', 'term', 'position', 'lang_id', 'group_tag_id', 'parent_tag_id', 'parent_position', 'related_term_entry_id'], {table: 'terms'});
 const csRelatedTerms = new pgp.helpers.ColumnSet(['related_term_id', 'related_term', 'reltype_id', 'related_lang_id'], {table: 'related_terms'});
@@ -117,8 +151,8 @@ async function importCSVtoPostgreSQL(directoryPath) {
                 relatedTermsData.push({
                     related_term_id: row.related_term_id,
                     related_term: row.related_term,
-                    reltype_id: row.reltype,  // Assuming reltype is an ID, adjust if needed
-                    related_lang_id: row.related_lang  // Assuming related_lang is an ID, adjust if needed
+                    reltype_id: mappings.reltypes[row.reltype],
+                    related_lang_id: mappings.languages[row.related_lang]
                 });
 
                 // Populate terms data
@@ -126,9 +160,9 @@ async function importCSVtoPostgreSQL(directoryPath) {
                     term_id: row.term_id,
                     term: row.term,
                     position: row.position,
-                    lang_id: row.lang,  // Assuming lang is an ID, adjust if needed
-                    group_tag_id: row.group_tag,  // Assuming group_tag is an ID, adjust if needed
-                    parent_tag_id: row.parent_tag,  // Assuming parent_tag is an ID, adjust if needed
+                    lang_id: mappings.languages[row.lang],
+                    group_tag_id: mappings.group_tags[row.group_tag],
+                    parent_tag_id: mappings.parent_tags[row.parent_tag],
                     parent_position: row.parent_position,
                     related_term_entry_id: row.related_term_id
                 });
@@ -154,6 +188,7 @@ async function importCSVtoPostgreSQL(directoryPath) {
 (async () => {
     await client.connect();
     await createDatabaseAndTables();
+    await cacheMappings();
     await importCSVtoPostgreSQL('./chunks');
     await client.end();
 })();
