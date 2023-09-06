@@ -2,16 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
 const { Client } = require('pg');
+require('dotenv').config();
 
-const config = {
-    host: 'localhost',
-    user: process.env.ETYMOLOGY_DB_USER,
-    password: process.env.ETYMOLOGY_DB_PASSWORD,
-    database: 'etymologydb'
-};
 
-let client = new Client(config);
-
+const connectionString = `postgresql://${process.env.ETYMOLOGY_DB_USER}:${process.env.ETYMOLOGY_DB_PASSWORD}@localhost:5432/postgres`;
+let client = new Client({
+    connectionString: connectionString
+});
 async function createDatabaseAndTables() {
     try {
         await client.query('CREATE DATABASE etymologydb;');
@@ -66,12 +63,16 @@ async function importCSVtoPostgreSQL(directoryPath) {
         fs.readdir(directoryPath, async (err, files) => {
             if (err) throw err;
 
+            let totalFiles = files.length;
+            let processedFiles = 0;
+
             for (const file of files) {
+                let rowCount = 0;
                 const filePath = path.join(directoryPath, file);
                 const readStream = fs.createReadStream(filePath);
                 readStream.pipe(csv())
                     .on('data', async (row) => {
-                        // Insert data into dimension tables
+                        rowCount++;
                         await client.query('INSERT INTO Languages(lang) VALUES($1) ON CONFLICT (lang) DO NOTHING', [row.lang]);
                         await client.query('INSERT INTO GroupTags(group_tag) VALUES($1) ON CONFLICT (group_tag) DO NOTHING', [row.group_tag]);
                         await client.query('INSERT INTO ParentTags(parent_tag) VALUES($1) ON CONFLICT (parent_tag) DO NOTHING', [row.parent_tag]);
@@ -85,9 +86,13 @@ async function importCSVtoPostgreSQL(directoryPath) {
                         `;
                         const values = [row.term_id, row.term, row.position, row.lang, row.group_tag, row.parent_tag, row.parent_position, row.reltype, row.related_term];
                         await client.query(query, values);
+                        if (rowCount % 1000 === 0) {
+                            console.log(`Processed ${rowCount} rows from ${file}`);
+                        }
                     })
                     .on('end', () => {
-                        console.log(`CSV file ${file} successfully processed`);
+                        processedFiles++;
+                        console.log(`CSV file ${file} successfully processed. Progress: ${((processedFiles / totalFiles) * 100).toFixed(2)}%`);
                     });
             }
         });
