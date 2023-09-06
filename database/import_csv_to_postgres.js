@@ -1,7 +1,10 @@
-import fs from "fs";
-import path from "path";
-import csv from "csv-parser";
-import pgp from 'pg-promise';
+const fs = require('fs');
+const path = require('path');
+const csv = require('csv-parser');
+const { db, pgp } = require('./config');
+
+
+const BATCH_SIZE = 1000; // Number of rows to insert in a single batch
 
 let mappings = {
     reltypes: {},
@@ -47,72 +50,53 @@ const db = pgp({
 const BATCH_SIZE = 5; // Number of files to process concurrently. Adjust as needed.
 
 
-async function importCSVtoPostgreSQL(directoryPath) {
-    try {
-        const files = fs.readdirSync(directoryPath);
-        let totalRowsAdded = 0; // Counter for total rows added
+async function processCSVFile(filePath) {
+    return new Promise((resolve, reject) => {
+        const batches = [];
+        let batch = [];
+        let rowCount = 0;
 
-        for (let i = 0; i < files.length; i += BATCH_SIZE) {
-            const batchFiles = files.slice(i, i + BATCH_SIZE);
-            await Promise.all(batchFiles.map(async (file, index) => {
-                const filePath = path.join(directoryPath, file);
-                const data = fs.readFileSync(filePath, 'utf8');
-                const rows = await csv().fromString(data);
-
-                const termsData = [];
-                const relatedTermsData = [];
-
-                for (let j = 0; j < rows.length; j++) {
-                    const row = rows[j];
-                    relatedTermsData.push({
-                        related_term_id: row.related_term_id,
-                        related_term: row.related_term,
-                        reltype_id: mappings.reltypes[row.reltype],
-                        related_lang_id: mappings.languages[row.related_lang]
-                    });
-
-                    termsData.push({
-                        term_id: row.term_id,
-                        term: row.term,
-                        position: row.position,
-                        lang_id: mappings.languages[row.lang],
-                        group_tag_id: mappings.group_tags[row.group_tag],
-                        parent_tag_id: mappings.parent_tags[row.parent_tag],
-                        parent_position: row.parent_position,
-                        related_term_entry_id: row.related_term_id
-                    });
-
-                    // Print progress for the current chunk
-                    if (j % 1000 === 0 || j === rows.length - 1) { // Adjust the 1000 value if you want more frequent updates
-                        const percentageDone = ((j + 1) / rows.length) * 100;
-                        console.log(`Processing file ${file} (${index + 1}/${batchFiles.length}): ${percentageDone.toFixed(2)}% done.`);
-                    }
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('data', (row) => {
+                batch.push(row);
+                if (batch.length === BATCH_SIZE) {
+                    batches.push(insertBatch(batch));
+                    batch = [];
                 }
-
-                const relatedTermsInsert = pgp.helpers.insert(relatedTermsData, csRelatedTerms) + ' ON CONFLICT DO NOTHING';
-                const termsInsert = pgp.helpers.insert(termsData, csTerms) + ' ON CONFLICT DO NOTHING';
-
-                await db.tx(async t => {
-                    await t.none(relatedTermsInsert);
-                    await t.none(termsInsert);
-                });
-
-                totalRowsAdded += rows.length;
-                console.log(`CSV file ${file} successfully processed. Total rows added so far: ${totalRowsAdded}.`);
-            }));
-        }
-
-    } catch (err) {
-        console.error('Error importing CSV to PostgreSQL:', err);
-    } finally {
-        pgp.end();
-    }
+                rowCount++;
+            })
+            .on('end', async () => {
+                if (batch.length) {
+                    batches.push(insertBatch(batch));
+                }
+                await Promise.all(batches);
+                resolve(rowCount);
+            })
+            .on('error', reject);
+    });
 }
 
-
-// Call the functions
-(async () => {
-    const directoryPath = path.join(__dirname, 'chunks');
+async function importCSVtoPostgreSQL() {
     await cacheMappings();
-    await importCSVtoPostgreSQL(directoryPath);
-})();
+
+    const csvDir = path.join(__dirname, 'chunks');
+    const csvFiles = fs.readdirSync(csvDir);
+    let totalRows = 0;
+
+    for (let i = 0; i < csvFiles.length; i += BATCH_SIZE) {
+        const fileBatch = csvFiles.slice(i, i + BATCH_SIZE);
+        const promises = fileBatch.map((file) => processCSVFile(path.join(csvDir, file)));
+
+        const results = await Promise.all(promises);
+        totalRows += results.reduce((acc, val) => acc + val, 0);
+
+        console.log(`Processed files ${i + 1} to ${i + fileBatch.length} of ${csvFiles.length}. Total rows added: ${totalRows}`);
+    }
+
+    console.log('Data import completed.');
+}
+
+importCSVtoPostgreSQL().catch((error) => {
+    console.error('Error importing CSV to PostgreSQL:', error);
+});
