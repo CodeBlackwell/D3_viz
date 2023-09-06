@@ -60,7 +60,35 @@ async function createDatabaseAndTables() {
 }
 
 async function importCSVtoPostgreSQL(directoryPath) {
-    // ... (rest of the import function remains unchanged)
+    try {
+        await client.connect();
+
+        fs.readdir(directoryPath, async (err, files) => {
+            if (err) throw err;
+
+            for (const file of files) {
+                const filePath = path.join(directoryPath, file);
+                const readStream = fs.createReadStream(filePath);
+                readStream.pipe(csv())
+                    .on('data', async (row) => {
+                        // Adjust this part based on the CSV structure and the table structure
+                        const query = `
+                            INSERT INTO your_table_name( /* columns */ )
+                            VALUES( /* values */ );
+                        `;
+                        const values = [ /* values from row */ ];
+                        await client.query(query, values);
+                    })
+                    .on('end', () => {
+                        console.log(`CSV file ${file} successfully processed`);
+                    });
+            }
+        });
+    } catch (err) {
+        console.error('Error importing CSV to PostgreSQL:', err);
+    } finally {
+        await client.end();
+    }
 }
 
 // Call the functions
