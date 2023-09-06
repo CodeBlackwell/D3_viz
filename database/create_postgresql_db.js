@@ -10,7 +10,7 @@ const config = {
     database: 'etymologydb'
 };
 
-const client = new Client(config);
+let client = new Client(config);
 
 async function createDatabaseAndTables() {
     try {
@@ -20,7 +20,7 @@ async function createDatabaseAndTables() {
         // Switch to the new database
         client.end();
         config.database = 'etymologydb';
-        let client = new Client(config);
+        client = new Client(config);
         await client.connect();
 
         // Create tables
