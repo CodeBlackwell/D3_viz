@@ -3,3 +3,6 @@ database/*.csv
 database/*/*.csv
 database/etymology.*
 database/*.db
+.env
+.ipynb_checkpoints/*
+*.ipynb
