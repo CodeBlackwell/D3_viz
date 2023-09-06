@@ -128,52 +128,63 @@ const db = pgp({
     user: process.env.ETYMOLOGY_DB_USER,
     password: process.env.ETYMOLOGY_DB_PASSWORD
 });
+const BATCH_SIZE = 5; // Number of files to process concurrently. Adjust as needed.
 
-const csTerms = new pgp.helpers.ColumnSet(['term_id', 'term', 'position', 'lang_id', 'group_tag_id', 'parent_tag_id', 'parent_position', 'related_term_entry_id'], {table: 'terms'});
-const csRelatedTerms = new pgp.helpers.ColumnSet(['related_term_id', 'related_term', 'reltype_id', 'related_lang_id'], {table: 'related_terms'});
+const BATCH_SIZE = 5; // Number of files to process concurrently. Adjust as needed.
 
 async function importCSVtoPostgreSQL(directoryPath) {
     try {
         const files = fs.readdirSync(directoryPath);
-        let totalFiles = files.length;
+        let totalRowsAdded = 0; // Counter for total rows added
 
-        for (const file of files) {
-            const filePath = path.join(directoryPath, file);
-            const data = fs.readFileSync(filePath, 'utf8');
-            const rows = await csv().fromString(data);
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            const batchFiles = files.slice(i, i + BATCH_SIZE);
+            await Promise.all(batchFiles.map(async (file, index) => {
+                const filePath = path.join(directoryPath, file);
+                const data = fs.readFileSync(filePath, 'utf8');
+                const rows = await csv().fromString(data);
 
-            const termsData = [];
-            const relatedTermsData = [];
+                const termsData = [];
+                const relatedTermsData = [];
 
-            for (const row of rows) {
-                // Populate related terms data
-                relatedTermsData.push({
-                    related_term_id: row.related_term_id,
-                    related_term: row.related_term,
-                    reltype_id: mappings.reltypes[row.reltype],
-                    related_lang_id: mappings.languages[row.related_lang]
+                for (let j = 0; j < rows.length; j++) {
+                    const row = rows[j];
+                    relatedTermsData.push({
+                        related_term_id: row.related_term_id,
+                        related_term: row.related_term,
+                        reltype_id: mappings.reltypes[row.reltype],
+                        related_lang_id: mappings.languages[row.related_lang]
+                    });
+
+                    termsData.push({
+                        term_id: row.term_id,
+                        term: row.term,
+                        position: row.position,
+                        lang_id: mappings.languages[row.lang],
+                        group_tag_id: mappings.group_tags[row.group_tag],
+                        parent_tag_id: mappings.parent_tags[row.parent_tag],
+                        parent_position: row.parent_position,
+                        related_term_entry_id: row.related_term_id
+                    });
+
+                    // Print progress for the current chunk
+                    if (j % 1000 === 0 || j === rows.length - 1) { // Adjust the 1000 value if you want more frequent updates
+                        const percentageDone = ((j + 1) / rows.length) * 100;
+                        console.log(`Processing file ${file} (${index + 1}/${batchFiles.length}): ${percentageDone.toFixed(2)}% done.`);
+                    }
+                }
+
+                const relatedTermsInsert = pgp.helpers.insert(relatedTermsData, csRelatedTerms) + ' ON CONFLICT DO NOTHING';
+                const termsInsert = pgp.helpers.insert(termsData, csTerms) + ' ON CONFLICT DO NOTHING';
+
+                await db.tx(async t => {
+                    await t.none(relatedTermsInsert);
+                    await t.none(termsInsert);
                 });
 
-                // Populate terms data
-                termsData.push({
-                    term_id: row.term_id,
-                    term: row.term,
-                    position: row.position,
-                    lang_id: mappings.languages[row.lang],
-                    group_tag_id: mappings.group_tags[row.group_tag],
-                    parent_tag_id: mappings.parent_tags[row.parent_tag],
-                    parent_position: row.parent_position,
-                    related_term_entry_id: row.related_term_id
-                });
-            }
-
-            const relatedTermsInsert = pgp.helpers.insert(relatedTermsData, csRelatedTerms) + ' ON CONFLICT DO NOTHING';
-            const termsInsert = pgp.helpers.insert(termsData, csTerms) + ' ON CONFLICT DO NOTHING';
-
-            await db.none(relatedTermsInsert);
-            await db.none(termsInsert);
-
-            console.log(`CSV file ${file} successfully processed.`);
+                totalRowsAdded += rows.length;
+                console.log(`CSV file ${file} successfully processed. Total rows added so far: ${totalRowsAdded}.`);
+            }));
         }
 
     } catch (err) {
@@ -182,6 +193,7 @@ async function importCSVtoPostgreSQL(directoryPath) {
         pgp.end();
     }
 }
+
 
 // Call the functions
 (async () => {
