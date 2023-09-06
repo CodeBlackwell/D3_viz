@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
 const { Client } = require('pg');
+const pgp = require('pg-promise')();
+
 require('dotenv').config();
 
 
@@ -9,6 +11,8 @@ const connectionString = `postgresql://${process.env.ETYMOLOGY_DB_USER}:${proces
 let client = new Client({
     connectionString: connectionString
 });
+
+
 async function createDatabaseAndTables() {
     try {
         // Check if the database exists
@@ -53,6 +57,13 @@ async function createDatabaseAndTables() {
                 parent_tag_id SERIAL PRIMARY KEY,
                 parent_tag_name TEXT UNIQUE NOT NULL
             );
+
+            CREATE TABLE related_terms (
+                related_term_id TEXT PRIMARY KEY,
+                related_term TEXT,
+                reltype_id INTEGER REFERENCES reltypes(reltype_id),
+                related_lang_id INTEGER REFERENCES languages(lang_id)
+            );
         `);
         console.log('Dimension tables created successfully.');
 
@@ -62,13 +73,11 @@ async function createDatabaseAndTables() {
                 term_id TEXT NOT NULL,
                 term TEXT,
                 lang_id INTEGER REFERENCES languages(lang_id),
-                reltype_id INTEGER REFERENCES reltypes(reltype_id),
-                related_term_id TEXT,
-                related_lang_id INTEGER REFERENCES languages(lang_id),
                 position REAL,
                 group_tag_id INTEGER REFERENCES group_tags(group_tag_id),
                 parent_tag_id INTEGER REFERENCES parent_tags(parent_tag_id),
-                parent_position REAL
+                parent_position REAL,
+                related_term_entry_id TEXT REFERENCES related_terms(related_term_id)
             );
         `);
         console.log('Fact table created successfully.');
@@ -79,50 +88,65 @@ async function createDatabaseAndTables() {
 }
 
 
+const csTerms = new pgp.helpers.ColumnSet(['term_id', 'term', 'position', 'lang_id', 'group_tag_id', 'parent_tag_id', 'parent_position', 'related_term_entry_id'], {table: 'terms'});
+const csRelatedTerms = new pgp.helpers.ColumnSet(['related_term_id', 'related_term', 'reltype_id', 'related_lang_id'], {table: 'related_terms'});
+
 async function importCSVtoPostgreSQL(directoryPath) {
     try {
-        await client.connect();
-
-        fs.readdir(directoryPath, async (err, files) => {
-            if (err) throw err;
-
-            let totalFiles = files.length;
-            let processedFiles = 0;
-
-            for (const file of files) {
-                let rowCount = 0;
-                const filePath = path.join(directoryPath, file);
-                const readStream = fs.createReadStream(filePath);
-                readStream.pipe(csv())
-                    .on('data', async (row) => {
-                        rowCount++;
-                        await client.query('INSERT INTO Languages(lang) VALUES($1) ON CONFLICT (lang) DO NOTHING', [row.lang]);
-                        await client.query('INSERT INTO GroupTags(group_tag) VALUES($1) ON CONFLICT (group_tag) DO NOTHING', [row.group_tag]);
-                        await client.query('INSERT INTO ParentTags(parent_tag) VALUES($1) ON CONFLICT (parent_tag) DO NOTHING', [row.parent_tag]);
-                        await client.query('INSERT INTO RelatedTerms(related_term, reltype, related_lang_id) VALUES($1, $2, (SELECT lang_id FROM Languages WHERE lang = $3)) ON CONFLICT (related_term) DO NOTHING', [row.related_term, row.reltype, row.related_lang]);
-
-                        // Insert data into fact table
-                        const query = `
-                            INSERT INTO Terms(term_id, term, position, lang_id, group_tag_id, parent_tag_id, parent_position, reltype, related_term_id)
-                            VALUES($1, $2, $3, (SELECT lang_id FROM Languages WHERE lang = $4), (SELECT group_tag_id FROM GroupTags WHERE group_tag = $5), (SELECT parent_tag_id FROM ParentTags WHERE parent_tag = $6), $7, $8, (SELECT related_term_id FROM RelatedTerms WHERE related_term = $9))
-                            ON CONFLICT (term_id) DO NOTHING;
-                        `;
-                        const values = [row.term_id, row.term, row.position, row.lang, row.group_tag, row.parent_tag, row.parent_position, row.reltype, row.related_term];
-                        await client.query(query, values);
-                        if (rowCount % 1000 === 0) {
-                            console.log(`Processed ${rowCount} rows from ${file}`);
-                        }
-                    })
-                    .on('end', () => {
-                        processedFiles++;
-                        console.log(`CSV file ${file} successfully processed. Progress: ${((processedFiles / totalFiles) * 100).toFixed(2)}%`);
-                    });
-            }
+        const db = pgp({
+            host: 'localhost',
+            port: 5432,
+            database: 'etymologydb',
+            user: process.env.ETYMOLOGY_DB_USER,
+            password: process.env.ETYMOLOGY_DB_PASSWORD
         });
+
+        const files = fs.readdirSync(directoryPath);
+        let totalFiles = files.length;
+
+        for (const file of files) {
+            const filePath = path.join(directoryPath, file);
+            const data = fs.readFileSync(filePath, 'utf8');
+            const rows = await csv().fromString(data);
+
+            const termsData = [];
+            const relatedTermsData = [];
+
+            for (const row of rows) {
+                // Populate related terms data
+                relatedTermsData.push({
+                    related_term_id: row.related_term_id,
+                    related_term: row.related_term,
+                    reltype_id: row.reltype,  // Assuming reltype is an ID, adjust if needed
+                    related_lang_id: row.related_lang  // Assuming related_lang is an ID, adjust if needed
+                });
+
+                // Populate terms data
+                termsData.push({
+                    term_id: row.term_id,
+                    term: row.term,
+                    position: row.position,
+                    lang_id: row.lang,  // Assuming lang is an ID, adjust if needed
+                    group_tag_id: row.group_tag,  // Assuming group_tag is an ID, adjust if needed
+                    parent_tag_id: row.parent_tag,  // Assuming parent_tag is an ID, adjust if needed
+                    parent_position: row.parent_position,
+                    related_term_entry_id: row.related_term_id
+                });
+            }
+
+            const relatedTermsInsert = pgp.helpers.insert(relatedTermsData, csRelatedTerms) + ' ON CONFLICT DO NOTHING';
+            const termsInsert = pgp.helpers.insert(termsData, csTerms) + ' ON CONFLICT DO NOTHING';
+
+            await db.none(relatedTermsInsert);
+            await db.none(termsInsert);
+
+            console.log(`CSV file ${file} successfully processed.`);
+        }
+
     } catch (err) {
         console.error('Error importing CSV to PostgreSQL:', err);
     } finally {
-        await client.end();
+        pgp.end();
     }
 }
 
