@@ -95,6 +95,6 @@ async function importCSVtoPostgreSQL(directoryPath) {
 (async () => {
     await client.connect();
     await createDatabaseAndTables();
-    await importCSVtoPostgreSQL('path_to_database/chunks/');
+    await importCSVtoPostgreSQL('./chunks');
     await client.end();
 })();
