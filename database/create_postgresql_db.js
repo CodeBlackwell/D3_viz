@@ -121,20 +121,19 @@ async function cacheMappings() {
     }
 }
 
+const db = pgp({
+    host: 'localhost',
+    port: 5432,
+    database: 'etymologydb',
+    user: process.env.ETYMOLOGY_DB_USER,
+    password: process.env.ETYMOLOGY_DB_PASSWORD
+});
 
 const csTerms = new pgp.helpers.ColumnSet(['term_id', 'term', 'position', 'lang_id', 'group_tag_id', 'parent_tag_id', 'parent_position', 'related_term_entry_id'], {table: 'terms'});
 const csRelatedTerms = new pgp.helpers.ColumnSet(['related_term_id', 'related_term', 'reltype_id', 'related_lang_id'], {table: 'related_terms'});
 
 async function importCSVtoPostgreSQL(directoryPath) {
     try {
-        const db = pgp({
-            host: 'localhost',
-            port: 5432,
-            database: 'etymologydb',
-            user: process.env.ETYMOLOGY_DB_USER,
-            password: process.env.ETYMOLOGY_DB_PASSWORD
-        });
-
         const files = fs.readdirSync(directoryPath);
         let totalFiles = files.length;
 
