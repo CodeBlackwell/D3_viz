@@ -73,10 +73,10 @@ async function createDatabaseAndTables() {
                 term_id TEXT NOT NULL,
                 term TEXT,
                 lang_id INTEGER REFERENCES languages(lang_id),
-                position REAL,
+                position TEXT,
                 group_tag_id INTEGER REFERENCES group_tags(group_tag_id),
                 parent_tag_id INTEGER REFERENCES parent_tags(parent_tag_id),
-                parent_position REAL,
+                parent_position TEXT,
                 related_term_entry_id TEXT REFERENCES related_terms(related_term_id)
             );
         `);
