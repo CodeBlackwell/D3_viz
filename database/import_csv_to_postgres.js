@@ -17,9 +17,19 @@ async function importCSVFiles() {
 
         // Loop through each CSV file in the chunks directory
         const files = fs.readdirSync(path.join(__dirname, 'chunks'));
+        const totalFiles = files.filter(file => path.extname(file) === '.csv').length;
+
+        let processedFiles = 0;
+
         for (const file of files) {
             if (path.extname(file) === '.csv') {
+                console.log(`Processing file: ${file}`);
                 const filePath = path.join(__dirname, 'chunks', file);
+
+                // Count the total rows in the current file
+                const totalRows = fs.readFileSync(filePath, 'utf-8').split('\n').length - 1; // Subtract 1 for the header row
+                let processedRows = 0;
+
                 const readStream = fs.createReadStream(filePath).pipe(csv());
 
                 // Read each row from the CSV file and insert it into the database
@@ -33,7 +43,16 @@ async function importCSVFiles() {
 
                     // Insert into fact table
                     await client.query('INSERT INTO terms(term_id, term, lang_id, position, group_tag_id, parent_tag_id, parent_position, related_term_entry_id) VALUES($1, $2, $3, $4, $5, $6, $7, $8)', [row.term_id, row.term, row.lang_id, row.position, row.group_tag_id, row.parent_tag_id, row.parent_position, row.related_term_entry_id]);
+                    processedRows++;
+
+                    // Print progress every 1,000 rows
+                    if (processedRows % 1000 === 0) {
+                        const rowPercentageComplete = ((processedRows / totalRows) * 100).toFixed(2);
+                        console.log(`Progress in ${file}: ${rowPercentageComplete}% (${processedRows} rows processed)`);
+                    }
                 }
+                const filePercentageComplete = ((processedFiles / totalFiles) * 100).toFixed(2);
+                console.log(`Completed ${file}. Overall progress: ${filePercentageComplete}%`);
             }
         }
 
