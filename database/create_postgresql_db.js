@@ -40,22 +40,22 @@ async function createDatabaseAndTables() {
         await client.query(`
             CREATE TABLE languages (
                 lang_id SERIAL PRIMARY KEY,
-                lang_name TEXT UNIQUE NOT NULL
+                lang_name TEXT UNIQUE
             );
 
             CREATE TABLE reltypes (
                 reltype_id SERIAL PRIMARY KEY,
-                reltype_name TEXT UNIQUE NOT NULL
+                reltype_name TEXT UNIQUE
             );
 
             CREATE TABLE group_tags (
                 group_tag_id SERIAL PRIMARY KEY,
-                group_tag_name TEXT UNIQUE NOT NULL
+                group_tag_name TEXT UNIQUE
             );
 
             CREATE TABLE parent_tags (
                 parent_tag_id SERIAL PRIMARY KEY,
-                parent_tag_name TEXT UNIQUE NOT NULL
+                parent_tag_name TEXT UNIQUE
             );
 
             CREATE TABLE related_terms (
