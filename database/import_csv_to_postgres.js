@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
-const { pgp } = require('./config');
-
+const pgp = require("pg-promise")
 
 
 let mappings = {
@@ -39,13 +38,9 @@ async function cacheMappings() {
     }
 }
 
-const db = pgp({
-    host: 'localhost',
-    port: 5432,
-    database: 'etymologydb',
-    user: process.env.ETYMOLOGY_DB_USER,
-    password: process.env.ETYMOLOGY_DB_PASSWORD
-});
+const connectionString = `postgres://${process.env.ETYMOLOGY_DB_USER}:${process.env.ETYMOLOGY_DB_PASSWORD}@localhost:5432/etymologydb`;
+const db = pgp(connectionString);
+
 const BATCH_SIZE = 50; // Number of files to process concurrently. Adjust as needed.
 
 
