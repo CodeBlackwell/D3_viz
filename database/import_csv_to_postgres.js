@@ -1,100 +1,49 @@
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
-const pgp = require("pg-promise")
+const { Client } = require('pg');
+const pgp = require('pg-promise')();
 
 require('dotenv').config();
 
-console.log(process.env.ETYMOLOGY_DB_USER)
-console.log(process.env.ETYMOLOGY_DB_PASSWORD)
-
-let mappings = {
-    reltypes: {},
-    languages: {},
-    group_tags: {},
-    parent_tags: {}
-};
-
-async function cacheMappings() {
-    try {
-        const reltypes = await client.query('SELECT reltype_id, reltype_name FROM reltypes;');
-        reltypes.rows.forEach(row => {
-            mappings.reltypes[row.reltype_name] = row.reltype_id;
-        });
-
-        const languages = await client.query('SELECT lang_id, lang_name FROM languages;');
-        languages.rows.forEach(row => {
-            mappings.languages[row.lang_name] = row.lang_id;
-        });
-
-        const groupTags = await client.query('SELECT group_tag_id, group_tag_name FROM group_tags;');
-        groupTags.rows.forEach(row => {
-            mappings.group_tags[row.group_tag_name] = row.group_tag_id;
-        });
-
-        const parentTags = await client.query('SELECT parent_tag_id, parent_tag_name FROM parent_tags;');
-        parentTags.rows.forEach(row => {
-            mappings.parent_tags[row.parent_tag_name] = row.parent_tag_id;
-        });
-
-    } catch (err) {
-        console.error('Error caching mappings:', err);
-    }
-}
-
-const connectionString = `postgres://${process.env.ETYMOLOGY_DB_USER}:${process.env.ETYMOLOGY_DB_PASSWORD}@localhost:5432/etymologydb`;
-const db = pgp(connectionString);
-
-const BATCH_SIZE = 50; // Number of files to process concurrently. Adjust as needed.
-
-
-async function processCSVFile(filePath) {
-    return new Promise((resolve, reject) => {
-        const batches = [];
-        let batch = [];
-        let rowCount = 0;
-
-        fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', (row) => {
-                batch.push(row);
-                if (batch.length === BATCH_SIZE) {
-                    batches.push(insertBatch(batch));
-                    batch = [];
-                }
-                rowCount++;
-            })
-            .on('end', async () => {
-                if (batch.length) {
-                    batches.push(insertBatch(batch));
-                }
-                await Promise.all(batches);
-                resolve(rowCount);
-            })
-            .on('error', reject);
-    });
-}
-
-async function importCSVtoPostgreSQL() {
-    await cacheMappings();
-
-    const csvDir = path.join(__dirname, 'chunks');
-    const csvFiles = fs.readdirSync(csvDir);
-    let totalRows = 0;
-
-    for (let i = 0; i < csvFiles.length; i += BATCH_SIZE) {
-        const fileBatch = csvFiles.slice(i, i + BATCH_SIZE);
-        const promises = fileBatch.map((file) => processCSVFile(path.join(csvDir, file)));
-
-        const results = await Promise.all(promises);
-        totalRows += results.reduce((acc, val) => acc + val, 0);
-
-        console.log(`Processed files ${i + 1} to ${i + fileBatch.length} of ${csvFiles.length}. Total rows added: ${totalRows}`);
-    }
-
-    console.log('Data import completed.');
-}
-
-importCSVtoPostgreSQL().catch((error) => {
-    console.error('Error importing CSV to PostgreSQL:', error);
+const connectionString = `postgresql://${process.env.ETYMOLOGY_DB_USER}:${process.env.ETYMOLOGY_DB_PASSWORD}@localhost:5432/etymologydb`;
+let client = new Client({
+    connectionString: connectionString
 });
+
+async function importCSVFiles() {
+    try {
+        await client.connect();
+
+        // Loop through each CSV file in the chunks directory
+        const files = fs.readdirSync(path.join(__dirname, 'chunks'));
+        for (const file of files) {
+            if (path.extname(file) === '.csv') {
+                const filePath = path.join(__dirname, 'chunks', file);
+                const readStream = fs.createReadStream(filePath).pipe(csv());
+
+                // Read each row from the CSV file and insert it into the database
+                for await (const row of readStream) {
+                    // Insert into dimension tables first
+                    await client.query('INSERT INTO languages(lang_name) VALUES($1) ON CONFLICT (lang_name) DO NOTHING', [row.lang_name]);
+                    await client.query('INSERT INTO reltypes(reltype_name) VALUES($1) ON CONFLICT (reltype_name) DO NOTHING', [row.reltype_name]);
+                    await client.query('INSERT INTO group_tags(group_tag_name) VALUES($1) ON CONFLICT (group_tag_name) DO NOTHING', [row.group_tag_name]);
+                    await client.query('INSERT INTO parent_tags(parent_tag_name) VALUES($1) ON CONFLICT (parent_tag_name) DO NOTHING', [row.parent_tag_name]);
+                    await client.query('INSERT INTO related_terms(related_term_id, related_term, reltype_id, related_lang_id) VALUES($1, $2, $3, $4) ON CONFLICT (related_term_id) DO NOTHING', [row.related_term_id, row.related_term, row.reltype_id, row.related_lang_id]);
+
+                    // Insert into fact table
+                    await client.query('INSERT INTO terms(term_id, term, lang_id, position, group_tag_id, parent_tag_id, parent_position, related_term_entry_id) VALUES($1, $2, $3, $4, $5, $6, $7, $8)', [row.term_id, row.term, row.lang_id, row.position, row.group_tag_id, row.parent_tag_id, row.parent_position, row.related_term_entry_id]);
+                }
+            }
+        }
+
+        console.log('CSV files imported successfully.');
+    } catch (err) {
+        console.error('Error importing CSV files:', err);
+    } finally {
+        await client.end();
+    }
+}
+
+// Call the function to start the import
+importCSVFiles();
