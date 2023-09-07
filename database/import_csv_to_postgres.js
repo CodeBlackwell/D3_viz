@@ -1,10 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
-const { db, pgp } = require('./config');
+const { pgp } = require('./config');
 
 
-const BATCH_SIZE = 1000; // Number of rows to insert in a single batch
 
 let mappings = {
     reltypes: {},
@@ -47,7 +46,7 @@ const db = pgp({
     user: process.env.ETYMOLOGY_DB_USER,
     password: process.env.ETYMOLOGY_DB_PASSWORD
 });
-const BATCH_SIZE = 5; // Number of files to process concurrently. Adjust as needed.
+const BATCH_SIZE = 50; // Number of files to process concurrently. Adjust as needed.
 
 
 async function processCSVFile(filePath) {
