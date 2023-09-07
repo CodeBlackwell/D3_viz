@@ -3,6 +3,10 @@ const path = require('path');
 const csv = require('csv-parser');
 const pgp = require("pg-promise")
 
+require('dotenv').config();
+
+console.log(process.env.ETYMOLOGY_DB_USER)
+console.log(process.env.ETYMOLOGY_DB_PASSWORD)
 
 let mappings = {
     reltypes: {},
